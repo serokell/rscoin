@@ -27,7 +27,7 @@ defaultBenchPeriod = 7
 
 bankBracket :: FilePath -> (B.State -> MsgPackRpc a) -> IO a
 bankBracket benchDir bankAction = runRealMode $ bracket
-    (liftIO $ B.openState $ benchDir </> "bank-db")
+    (liftIO B.openMemState)
     (liftIO . B.closeState)
     bankAction
 
@@ -43,7 +43,7 @@ bankThread benchDir = bankBracket benchDir $ \bankState -> do
 
 mintetteThread :: Int -> FilePath -> SecretKey -> IO ()
 mintetteThread mintetteId benchDir secretKey = runRealMode $ bracket
-    (liftIO $ M.openState $ benchDir </> dbFormatPath "mintette-db" mintetteId)
+    (liftIO M.openMemState)
     (liftIO . M.closeState) $
     \mintetteState -> do
         _ <- fork $ M.runWorker secretKey mintetteState

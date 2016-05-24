@@ -35,9 +35,8 @@ transactionNum = 1000
 
 userThread :: FilePath -> (Int64 -> A.RSCoinUserState -> MsgPackRpc a) -> Int64 -> IO a
 userThread benchDir userAction userId = runRealMode $ bracket
-    (liftIO $ A.openState $ benchDir </> dbFormatPath "wallet-db" userId)
+    (liftIO A.openMemState)
     (\userState -> liftIO $ do
-        createCheckpoint userState
         A.closeState userState
     )
     (userAction userId)
