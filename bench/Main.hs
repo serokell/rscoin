@@ -23,6 +23,7 @@ import           System.IO.Temp             (withSystemTempDirectory)
 import qualified RSCoin.Bank                as B
 import           RSCoin.Core                (PublicKey, SecretKey,
                                              Severity (..), initLogging, keyGen)
+import qualified RSCoin.User                as U
 import           RSCoin.User.Wallet         (UserAddress)
 
 import           Bench.RSCoin.FilePathUtils (tempBenchDirectory)
@@ -69,11 +70,10 @@ establishBank st = do
     logInfo "Running bank..."
     threadDelay (1 * 10 ^ (6 :: Int))
 
-initializeUsers :: [Int64] -> IO [UserAddress]
+initializeUsers :: [Int64] -> IO [(UserAddress, U.RSCoinUserState)]
 initializeUsers userIds = do
-    let initUserAction = userThread initializeUser
     logInfo $ sformat ("Initializing " % build % " users…") $ length userIds
-    mapM initUserAction userIds
+    mapM initializeUser userIds
 
 initializeSuperUser :: [UserAddress] -> IO ()
 initializeSuperUser userAddresses = do
@@ -84,13 +84,16 @@ initializeSuperUser userAddresses = do
     logInfo "Initialized user in bankMode, now waiting for the end of the period…"
     threadDelay $ fromInteger $ toMicroseconds (defaultBenchPeriod + 1)
 
-runTransactions :: [UserAddress] -> [Int64] -> IO NominalDiffTime
-runTransactions userAddresses userIds = do
-    let benchUserAction = userThread $ benchUserTransactions userAddresses
+runTransactions :: [UserAddress]
+                -> [U.RSCoinUserState]
+                -> [Int64]
+                -> IO NominalDiffTime
+runTransactions userAddresses userStates userIds = do
+    let benchUserAction = benchUserTransactions userAddresses
 
     logInfo "Running transactions…"
     timeBefore <- getCurrentTime
-    _ <- forConcurrently userIds benchUserAction
+    _ <- forConcurrently (zip userStates userIds) benchUserAction
     timeAfter <- getCurrentTime
 
     return $ timeAfter `diffUTCTime` timeBefore
@@ -110,8 +113,8 @@ main = do
     establishBank bankState
 
     let userIds    = [1 .. fromIntegral userNumber]
-    userAddresses <- initializeUsers userIds
+    (userAddresses, userStates) <- unzip <$> initializeUsers userIds
     initializeSuperUser userAddresses
 
-    elapsedTime <- runTransactions userAddresses userIds
+    elapsedTime <- runTransactions userAddresses userStates userIds
     logInfo $ sformat ("Elapsed time: " % shown) elapsedTime

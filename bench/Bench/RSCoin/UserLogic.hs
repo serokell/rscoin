@@ -1,4 +1,5 @@
 {-# LANGUAGE PatternGuards #-}
+{-# LANGUAGE TupleSections #-}
 
 module Bench.RSCoin.UserLogic
         ( benchUserTransactions
@@ -45,13 +46,15 @@ queryMyAddress :: A.RSCoinUserState -> MsgPackRpc UserAddress
 queryMyAddress userState = head <$> query' userState A.GetAllAddresses
 
 -- | Create user with 1 address and return it.
-initializeUser :: Int64 -> A.RSCoinUserState -> MsgPackRpc UserAddress
-initializeUser userId userState = do
-    let userAddressesNumber = 1
-    logDebug $ sformat ("Initializing user " % int % "…") userId
-    A.initState userState userAddressesNumber Nothing
-    queryMyAddress userState <*
-        logDebug (sformat ("Initialized user " % int % "…") userId)
+initializeUser :: Int64 -> IO (UserAddress, A.RSCoinUserState)
+initializeUser userId =
+    runRealMode $
+    do let userAddressesNumber = 1
+       logDebug $ sformat ("Initializing user " % int % "…") userId
+       userState <- liftIO A.openMemState
+       A.initState userState userAddressesNumber Nothing
+       ((, userState) <$> queryMyAddress userState) <*
+           logDebug (sformat ("Initialized user " % int % "…") userId)
 
 executeTransaction :: A.RSCoinUserState -> Int64 -> UserAddress -> MsgPackRpc ()
 executeTransaction userState coinAmount addrToSend = do
@@ -80,8 +83,8 @@ initializeBank userAddresses bankUserState = do
 
 -- | Start user with provided addresses of other users and do
 -- `transactionNum` transactions.
-benchUserTransactions :: [UserAddress] -> Int64 -> A.RSCoinUserState -> MsgPackRpc ()
-benchUserTransactions allAddresses userId userState = do
+benchUserTransactions :: [UserAddress] -> (A.RSCoinUserState, Int64) -> IO ()
+benchUserTransactions allAddresses (userState, userId) = runRealMode $ do
     myAddress <- queryMyAddress userState
     let otherAddresses = filter (/= myAddress) allAddresses
         loggingStep = transactionNum `div` 5
