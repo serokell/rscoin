@@ -25,24 +25,24 @@ import           System.FilePath            ((</>))
 defaultBenchPeriod :: Second
 defaultBenchPeriod = 7
 
-bankBracket :: FilePath -> (B.State -> MsgPackRpc a) -> IO a
-bankBracket benchDir bankAction = runRealMode $ bracket
-    (liftIO B.openMemState)
-    (liftIO . B.closeState)
-    bankAction
+-- bankBracket :: FilePath -> (B.State -> MsgPackRpc a) -> IO a
+-- bankBracket benchDir bankAction = runRealMode $ bracket
+--     (liftIO B.openMemState)
+--     (liftIO . B.closeState)
+--     bankAction
 
-addMintette :: Int -> FilePath -> PublicKey -> IO ()
-addMintette mintetteId benchDir publicKey = bankBracket benchDir $ \bankState -> liftIO $ do
+addMintette :: Int -> B.State -> PublicKey -> IO ()
+addMintette mintetteId bankState publicKey = do
     let mintette = Mintette bankHost (defaultPort + mintetteId)
     update bankState $ B.AddMintette mintette publicKey
 
-bankThread :: FilePath -> IO ()
-bankThread benchDir = bankBracket benchDir $ \bankState -> do
-    _ <- fork $ B.runWorkerWithPeriod defaultBenchPeriod bankSecretKey bankState
-    B.serve bankState
+bankThread :: B.State -> IO ()
+bankThread st = runRealMode $ do
+    _ <- fork $ B.runWorkerWithPeriod defaultBenchPeriod bankSecretKey st
+    B.serve st
 
-mintetteThread :: Int -> FilePath -> SecretKey -> IO ()
-mintetteThread mintetteId benchDir secretKey = runRealMode $ bracket
+mintetteThread :: Int -> SecretKey -> IO ()
+mintetteThread mintetteId secretKey = runRealMode $ bracket
     (liftIO M.openMemState)
     (liftIO . M.closeState) $
     \mintetteState -> do

@@ -20,6 +20,7 @@ import           Options.Generic
 
 import           System.IO.Temp             (withSystemTempDirectory)
 
+import qualified RSCoin.Bank                as B
 import           RSCoin.Core                (PublicKey, SecretKey,
                                              Severity (..), initLogging, keyGen)
 import           RSCoin.User.Wallet         (UserAddress)
@@ -49,43 +50,43 @@ type KeyPairList = [(SecretKey, PublicKey)]
 generateMintetteKeys :: Int -> IO KeyPairList
 generateMintetteKeys n = replicateM n keyGen
 
-runMintettes :: FilePath -> KeyPairList -> IO ()
-runMintettes benchDir secretKeys
+runMintettes :: B.State -> KeyPairList -> IO ()
+runMintettes bankState secretKeys
     = forM_ (zip [1..] secretKeys) $ \(mintetteId, (secretKey, publicKey)) -> do
-        addMintette mintetteId benchDir publicKey
-        void $ forkIO $ mintetteThread mintetteId benchDir secretKey
+        addMintette mintetteId bankState publicKey
+        void $ forkIO $ mintetteThread mintetteId secretKey
 
-establishMintettes :: FilePath -> Int -> IO ()
-establishMintettes benchDir mintettesNumber = do
+establishMintettes :: B.State -> Int -> IO ()
+establishMintettes bankState mintettesNumber = do
     keyPairs <- generateMintetteKeys mintettesNumber
-    runMintettes benchDir keyPairs
+    runMintettes bankState keyPairs
     logInfo $ sformat ("Running " % build % " mintettes…") mintettesNumber
     threadDelay $ 5 * 10 ^ (6 :: Int)
 
-establishBank :: FilePath -> IO ()
-establishBank benchDir = do
-    _ <- forkIO $ bankThread benchDir
+establishBank :: B.State -> IO ()
+establishBank st = do
+    _ <- forkIO $ bankThread st
     logInfo "Running bank..."
-    threadDelay $ 3 * 10 ^ (6 :: Int)
+    threadDelay (1 * 10 ^ (6 :: Int))
 
-initializeUsers :: FilePath -> [Int64] -> IO [UserAddress]
-initializeUsers benchDir userIds = do
-    let initUserAction = userThread benchDir initializeUser
+initializeUsers :: [Int64] -> IO [UserAddress]
+initializeUsers userIds = do
+    let initUserAction = userThread initializeUser
     logInfo $ sformat ("Initializing " % build % " users…") $ length userIds
     mapM initUserAction userIds
 
-initializeSuperUser :: FilePath -> [UserAddress] -> IO ()
-initializeSuperUser benchDir userAddresses = do
+initializeSuperUser :: [UserAddress] -> IO ()
+initializeSuperUser userAddresses = do
     -- give money to all users
     let bankId = 0
     logInfo "Initializaing user in bankMode…"
-    userThread benchDir (const $ initializeBank userAddresses) bankId
+    userThread (const $ initializeBank userAddresses) bankId
     logInfo "Initialized user in bankMode, now waiting for the end of the period…"
     threadDelay $ fromInteger $ toMicroseconds (defaultBenchPeriod + 1)
 
-runTransactions :: FilePath -> [UserAddress] -> [Int64] -> IO NominalDiffTime
-runTransactions benchDir userAddresses userIds = do
-    let benchUserAction = userThread benchDir $ benchUserTransactions userAddresses
+runTransactions :: [UserAddress] -> [Int64] -> IO NominalDiffTime
+runTransactions userAddresses userIds = do
+    let benchUserAction = userThread $ benchUserTransactions userAddresses
 
     logInfo "Running transactions…"
     timeBefore <- getCurrentTime
@@ -101,16 +102,16 @@ main = do
         userNumber      = unHelpful users
         globalSeverity  = fromMaybe Warning $ unHelpful severity
         bSeverity       = fromMaybe Debug   $ unHelpful benchSeverity
-    withSystemTempDirectory tempBenchDirectory $ \benchDir -> do
-        initLogging globalSeverity
-        initBenchLogger bSeverity
+    initLogging globalSeverity
+    initBenchLogger bSeverity
 
-        establishMintettes benchDir mintettesNumber
-        establishBank      benchDir
+    bankState <- B.openMemState
+    establishMintettes bankState mintettesNumber
+    establishBank bankState
 
-        let userIds    = [1 .. fromIntegral userNumber]
-        userAddresses <- initializeUsers benchDir userIds
-        initializeSuperUser benchDir userAddresses
+    let userIds    = [1 .. fromIntegral userNumber]
+    userAddresses <- initializeUsers userIds
+    initializeSuperUser userAddresses
 
-        elapsedTime <- runTransactions benchDir userAddresses userIds
-        logInfo $ sformat ("Elapsed time: " % shown) elapsedTime
+    elapsedTime <- runTransactions userAddresses userIds
+    logInfo $ sformat ("Elapsed time: " % shown) elapsedTime
