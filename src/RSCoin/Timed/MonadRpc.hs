@@ -15,6 +15,7 @@ module RSCoin.Timed.MonadRpc
        , Addr
        , MonadRpc
        , BankSettings (..)
+       , emptySettings
        , MsgPackRpc
        , runMsgPackRpc
        , RpcType
@@ -38,12 +39,15 @@ module RSCoin.Timed.MonadRpc
 import           Control.Monad.Base          (MonadBase)
 import           Control.Monad.Catch         (MonadCatch, MonadMask, MonadThrow)
 import           Control.Monad.Reader        (MonadReader, ReaderT (..),
-                                              runReaderT)
+                                              asks, runReaderT)
 import           Control.Monad.Trans         (MonadIO, lift, liftIO)
 import           Control.Monad.Trans.Control (MonadBaseControl, StM,
                                               liftBaseWith, restoreM)
 import qualified Data.ByteString             as BS
-import           Data.IORef                  (newIORef, readIORef, writeIORef)
+import           Data.HashMap.Strict         (HashMap)
+import qualified Data.HashMap.Strict         as HM
+import           Data.IORef                  (IORef, newIORef, readIORef,
+                                              writeIORef)
 import           Data.Maybe                  (fromMaybe)
 import           Data.Time.Units             (TimeUnit, convertUnit)
 
@@ -82,7 +86,13 @@ class MonadThrow r => MonadRpc r where
 
 -- Implementation for MessagePack
 
-newtype BankSettings = BankSettings { getHost :: Host }
+data BankSettings = BankSettings
+    { getHost       :: Host
+    , connectionMap :: IORef (HashMap Addr C.Connection)
+    }
+
+emptySettings :: Host -> IO BankSettings
+emptySettings host = BankSettings host <$> newIORef HM.empty
 
 newtype MsgPackRpc a = MsgPackRpc { runMsgPackRpc :: ReaderT BankSettings TimedIO a }
     deriving (Functor, Applicative, Monad, MonadIO, MonadBase IO,
@@ -97,14 +107,16 @@ instance MonadBaseControl IO MsgPackRpc where
     restoreM = MsgPackRpc . restoreM
 
 instance MonadRpc MsgPackRpc where
-    execClient (addr, port) (Client name args) = liftIO $ do
-        box <- newIORef Nothing
-        C.execClient addr port $ do
-            -- note, underlying rpc accepts a single argument - [Object]
-            res <- C.call name args
-            liftIO . writeIORef box $ Just res
-        fromMaybe (error "Aaa, execClient didn't return a value!")
-            <$> readIORef box
+    execClient (addr, port) (Client name args) = do
+        hashMapRef <- asks connectionMap
+        liftIO $ do
+            box <- newIORef Nothing
+            C.execClientWithMap hashMapRef addr port $ do
+                -- note, underlying rpc accepts a single argument - [Object]
+                res <- C.call name args
+                liftIO . writeIORef box $ Just res
+            fromMaybe (error "Aaa, execClient didn't return a value!")
+                <$> readIORef box
 
     serve port methods = S.serve port $ convertMethod <$> methods
       where

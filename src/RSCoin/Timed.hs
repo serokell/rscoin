@@ -34,8 +34,9 @@ instance (MonadTimed m, MonadRpc m, MonadIO m,
        MonadMask m, MonadReader BankSettings m) => WorkMode m
 
 runRealMode :: ByteString -> MsgPackRpc a -> IO a
-runRealMode bankHost
-    = runTimedIO . flip runReaderT (BankSettings bankHost) . runMsgPackRpc
+runRealMode bankHost rpcMonad = do
+    settings <- emptySettings bankHost
+    runTimedIO $ flip runReaderT settings $ runMsgPackRpc rpcMonad
 
 runRealModeLocal :: MsgPackRpc a -> IO a
 runRealModeLocal = runRealMode "127.0.0.1"
