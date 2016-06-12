@@ -36,6 +36,7 @@ module RSCoin.Timed.MonadRpc
        , serverTypeRestriction3
        ) where
 
+import           Control.Concurrent.MVar     (newMVar)
 import           Control.Monad.Base          (MonadBase)
 import           Control.Monad.Catch         (MonadCatch, MonadMask, MonadThrow)
 import           Control.Monad.Reader        (MonadReader, ReaderT (..),
@@ -44,10 +45,8 @@ import           Control.Monad.Trans         (MonadIO, lift, liftIO)
 import           Control.Monad.Trans.Control (MonadBaseControl, StM,
                                               liftBaseWith, restoreM)
 import qualified Data.ByteString             as BS
-import           Data.HashMap.Strict         (HashMap)
 import qualified Data.HashMap.Strict         as HM
-import           Data.IORef                  (IORef, newIORef, readIORef,
-                                              writeIORef)
+import           Data.IORef                  (newIORef, readIORef, writeIORef)
 import           Data.Maybe                  (fromMaybe)
 import           Data.Time.Units             (TimeUnit, convertUnit)
 
@@ -88,11 +87,11 @@ class MonadThrow r => MonadRpc r where
 
 data BankSettings = BankSettings
     { getHost       :: Host
-    , connectionMap :: IORef (HashMap Addr C.Connection)
+    , connectionMap :: C.IOMapVar
     }
 
 emptySettings :: Host -> IO BankSettings
-emptySettings host = BankSettings host <$> newIORef HM.empty
+emptySettings host = BankSettings host <$> newMVar HM.empty
 
 newtype MsgPackRpc a = MsgPackRpc { runMsgPackRpc :: ReaderT BankSettings TimedIO a }
     deriving (Functor, Applicative, Monad, MonadIO, MonadBase IO,
@@ -108,10 +107,10 @@ instance MonadBaseControl IO MsgPackRpc where
 
 instance MonadRpc MsgPackRpc where
     execClient (addr, port) (Client name args) = do
-        hashMapRef <- asks connectionMap
+        hashMapVar <- asks connectionMap
         liftIO $ do
             box <- newIORef Nothing
-            C.execClientWithMap hashMapRef addr port $ do
+            C.execClientWithMap hashMapVar addr port $ do
                 -- note, underlying rpc accepts a single argument - [Object]
                 res <- C.call name args
                 liftIO . writeIORef box $ Just res
