@@ -17,6 +17,7 @@ module RSCoin.Core.Constants
        , shardDivider
        , shardDelta
        , rpcTimeout
+       , rpcConnectionNumber
        , bankSecretKey
        ) where
 
@@ -94,6 +95,10 @@ shardDelta = $(lift $ CC.shardDelta CC.readRSCoinConfig)
 -- If timeout exceedes TimeoutError is thrown.
 rpcTimeout :: Second
 rpcTimeout = 5
+
+-- | Maximum size of allowed open sockets in one time.
+rpcConnectionNumber :: Integer
+rpcConnectionNumber = 1000
 
 -- | Bank's secret key which can be used to spend coins from genesis transaction.
 -- It's needed only for tests/benchmarks.

@@ -36,7 +36,6 @@ module RSCoin.Timed.MonadRpc
        , serverTypeRestriction3
        ) where
 
-import           Control.Concurrent.MVar     (newMVar)
 import           Control.Monad.Base          (MonadBase)
 import           Control.Monad.Catch         (MonadCatch, MonadMask, MonadThrow)
 import           Control.Monad.Reader        (MonadReader, ReaderT (..),
@@ -45,7 +44,6 @@ import           Control.Monad.Trans         (MonadIO, lift, liftIO)
 import           Control.Monad.Trans.Control (MonadBaseControl, StM,
                                               liftBaseWith, restoreM)
 import qualified Data.ByteString             as BS
-import qualified Data.HashMap.Strict         as HM
 import           Data.IORef                  (newIORef, readIORef, writeIORef)
 import           Data.Maybe                  (fromMaybe)
 import           Data.Time.Units             (TimeUnit, convertUnit)
@@ -53,6 +51,7 @@ import           Data.Time.Units             (TimeUnit, convertUnit)
 import qualified Network.MessagePack.Client  as C
 import qualified Network.MessagePack.Server  as S
 
+import           RSCoin.Core.Constants       (rpcConnectionNumber)
 import           RSCoin.Timed.MonadTimed     (MonadTimed (timeout))
 import           RSCoin.Timed.TimedIO        (TimedIO)
 
@@ -87,11 +86,11 @@ class MonadThrow r => MonadRpc r where
 
 data BankSettings = BankSettings
     { getHost       :: Host
-    , connectionMap :: C.IOMapVar
+    , connectionMap :: C.ConnectionMap
     }
 
 emptySettings :: Host -> IO BankSettings
-emptySettings host = BankSettings host <$> newMVar HM.empty
+emptySettings host = BankSettings host <$> C.createMVarLRU rpcConnectionNumber
 
 newtype MsgPackRpc a = MsgPackRpc { runMsgPackRpc :: ReaderT BankSettings TimedIO a }
     deriving (Functor, Applicative, Monad, MonadIO, MonadBase IO,
