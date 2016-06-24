@@ -102,6 +102,7 @@ library
                      , hashable
                      , hslogger
                      , lens
+                     , lifted-async
                      , mtl
                      , MonadRandom
                      , monad-loops

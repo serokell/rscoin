@@ -11,32 +11,34 @@ module RSCoin.User.Logic
        , validateTransaction
        ) where
 
-import           Control.Monad                 (guard, unless, when)
-import           Control.Monad.Catch           (throwM)
-import           Control.Monad.Trans           (liftIO)
-import           Data.Either.Combinators       (fromLeft', isLeft, rightToMaybe)
-import           Data.List                     (genericLength)
-import qualified Data.Map                      as M
-import           Data.Maybe                    (catMaybes, fromJust)
-import           Data.Monoid                   ((<>))
+import           Control.Concurrent.Async.Lifted (mapConcurrently)
+import           Control.Monad                   (guard, unless, when)
+import           Control.Monad.Catch             (throwM)
+import           Control.Monad.Trans             (liftIO)
+import           Data.Either.Combinators         (fromLeft', isLeft,
+                                                  rightToMaybe)
+import           Data.List                       (genericLength)
+import qualified Data.Map                        as M
+import           Data.Maybe                      (catMaybes, fromJust)
+import           Data.Monoid                     ((<>))
 
-import           RSCoin.Core.CheckConfirmation (verifyCheckConfirmation)
-import qualified RSCoin.Core.Communication     as CC
-import           RSCoin.Core.Crypto            (Signature, verify)
-import           RSCoin.Core.Logging           (logWarning, userLoggerName)
-import           RSCoin.Core.Primitives        (AddrId, Transaction (..))
-import           RSCoin.Core.Types             (CheckConfirmations,
-                                                CommitConfirmation, Mintette,
-                                                MintetteId, PeriodId)
-import           RSCoin.Mintette.Error         (MintetteError)
-import           RSCoin.Timed                  (WorkMode)
-import           RSCoin.User.Cache             (UserCache, getOwnersByAddrid,
-                                                getOwnersByTx,
-                                                invalidateUserCache)
-import           RSCoin.User.Error             (UserLogicError (..))
+import           RSCoin.Core.CheckConfirmation   (verifyCheckConfirmation)
+import qualified RSCoin.Core.Communication       as CC
+import           RSCoin.Core.Crypto              (Signature, verify)
+import           RSCoin.Core.Logging             (logWarning, userLoggerName)
+import           RSCoin.Core.Primitives          (AddrId, Transaction (..))
+import           RSCoin.Core.Types               (CheckConfirmations,
+                                                  CommitConfirmation, Mintette,
+                                                  MintetteId, PeriodId)
+import           RSCoin.Mintette.Error           (MintetteError)
+import           RSCoin.Timed                    (WorkMode)
+import           RSCoin.User.Cache               (UserCache, getOwnersByAddrid,
+                                                  getOwnersByTx,
+                                                  invalidateUserCache)
+import           RSCoin.User.Error               (UserLogicError (..))
 
-import           Serokell.Util.Text            (format', formatSingle',
-                                                listBuilderJSON, pairBuilder)
+import           Serokell.Util.Text              (format', formatSingle',
+                                                  listBuilderJSON, pairBuilder)
 
 -- | Implements V.1 from the paper. For all addrids that are inputs of
 -- transaction 'signatures' should contain signature of transaction
@@ -63,7 +65,7 @@ validateTransaction cache tx@Transaction{..} signatures height = do
             MajorityRejected $
             formatSingle' "Addrid {} doesn't have owners" addrid
         -- TODO maybe optimize it: we shouldn't query all mintettes, only the majority
-        subBundle <- mconcat . catMaybes <$> mapM (processMintette addrid) owns
+        subBundle <- mconcat . catMaybes <$> mapConcurrently (processMintette addrid) owns
         when (length subBundle <= length owns `div` 2) $
             do invalidateCache
                throwM $
@@ -92,7 +94,7 @@ validateTransaction cache tx@Transaction{..} signatures height = do
     commitBundle bundle = do
         owns <- getOwnersByTx cache height tx
         commitActions <-
-            mapM
+           mapConcurrently
                 (\(mintette,_) ->
                       CC.commitTx mintette tx height bundle)
                 owns

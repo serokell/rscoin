@@ -1,6 +1,7 @@
-{-# LANGUAGE FlexibleContexts     #-}
-{-# LANGUAGE FlexibleInstances    #-}
-{-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE FlexibleInstances     #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE UndecidableInstances  #-}
 
 -- | Re-export RSCoin.Timed.*
 
@@ -13,24 +14,25 @@ module RSCoin.Timed
        , runEmulationMode_
        ) where
 
-import           RSCoin.Timed.Misc       as Exports
-import           RSCoin.Timed.MonadRpc   as Exports
-import           RSCoin.Timed.MonadTimed as Exports
-import           RSCoin.Timed.PureRpc    as Exports
-import           RSCoin.Timed.Timed      as Exports
-import           RSCoin.Timed.TimedIO    as Exports
+import           RSCoin.Timed.Misc           as Exports
+import           RSCoin.Timed.MonadRpc       as Exports
+import           RSCoin.Timed.MonadTimed     as Exports
+import           RSCoin.Timed.PureRpc        as Exports
+import           RSCoin.Timed.Timed          as Exports
+import           RSCoin.Timed.TimedIO        as Exports
 
-import           Control.Monad           (join)
-import           Control.Monad.Catch     (MonadMask)
-import           Control.Monad.Reader    (MonadReader, runReaderT)
-import           Control.Monad.Trans     (MonadIO, liftIO)
-import           Data.ByteString         (ByteString)
-import           System.Random           (StdGen, getStdGen)
+import           Control.Monad               (join)
+import           Control.Monad.Catch         (MonadMask)
+import           Control.Monad.Reader        (MonadReader, runReaderT)
+import           Control.Monad.Trans         (MonadIO, liftIO)
+import           Control.Monad.Trans.Control (MonadBaseControl)
+import           Data.ByteString             (ByteString)
+import           System.Random               (StdGen, getStdGen)
 
-class (MonadTimed m, MonadRpc m, MonadIO m,
+class (MonadTimed m, MonadRpc m, MonadIO m, MonadBaseControl IO m,
        MonadMask m, MonadReader BankSettings m) => WorkMode m where
 
-instance (MonadTimed m, MonadRpc m, MonadIO m,
+instance (MonadTimed m, MonadRpc m, MonadIO m, MonadBaseControl IO m,
        MonadMask m, MonadReader BankSettings m) => WorkMode m
 
 runRealMode :: ByteString -> MsgPackRpc a -> IO a
